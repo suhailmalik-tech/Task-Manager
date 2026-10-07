@@ -1,68 +1,49 @@
-from app.tasks.dtos import TaskSchema
+from typing import List, Union
 from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
+from app.tasks.dtos import TaskSchema, TaskUpdateSchema
 from app.tasks.models import TaskModel
-from fastapi import HTTPException
-def create_task(body:TaskSchema, db:Session):
-    data  = body.model_dump()
+from app.user.models import UserModel
 
-    new_task = TaskModel(title = data["title"], description = data["description"], is_completed = data["is_completed"] )
-
-
-
-
-
-
+def create_task(body: TaskSchema, db: Session, user: UserModel) -> TaskModel:
+    new_task = TaskModel(
+        title=body.title,
+        description=body.description,
+        is_completed=body.is_completed,
+        user_id=user.id
+    )
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
-    return {
-        "message":"Task created successfully..."
-    }
+    return new_task
 
+def get_tasks(db: Session, user: UserModel) -> List[TaskModel]:
+    return db.query(TaskModel).filter(TaskModel.user_id == user.id).all()
 
+def get_one_task(task_id: int, db: Session, user: UserModel) -> TaskModel:
+    task = db.query(TaskModel).filter(TaskModel.id == task_id, TaskModel.user_id == user.id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
 
-def get_tasks(db:Session):
-    tasks = db.query(TaskModel).all()
-    return {"status":"All Tasks", "data":tasks}
+def update_task(body: Union[TaskSchema, TaskUpdateSchema], task_id: int, db: Session, user: UserModel) -> TaskModel:
+    task = db.query(TaskModel).filter(TaskModel.id == task_id, TaskModel.user_id == user.id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(task, field, value)
 
-
-def get_one_task(task_id:int, db:Session):
-    one_task = db.query(TaskModel).get(task_id)
-    if not one_task:
-        raise HTTPException(404, detail="Task Id is Incorrect")
-
-    return {"status":"Task fetched successfully", "data":one_task}
-
-
-def update_task(body:TaskSchema, task_id:int, db:Session):
-    one_task = db.query(TaskModel).get(task_id)
-    if not one_task:
-        raise HTTPException(404, detail="Task id is Incorrect")
-    body =body.model_dump()
-    for field, value in body.items():
-        setattr(one_task, field, value)
-
-    
-
-
-
-    db.add(one_task)
     db.commit()
-    db.refresh(one_task)
+    db.refresh(task)
+    return task
 
-    return {"status":"Task Updated Successfully", "data":one_task}
+def delete_task(task_id: int, db: Session, user: UserModel):
+    task = db.query(TaskModel).filter(TaskModel.id == task_id, TaskModel.user_id == user.id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-
-def delete_task(task_id:int, db:Session):
-    one_task = db.query(TaskModel).get(task_id)
-    if not one_task:
-        raise HTTPException(404, detail="Task id is Incorrect")
-
-    db.delete(one_task)
+    db.delete(task)
     db.commit()
-
-
-    return {
-        "status":"Task deletion successfull"
-    }
+    return None
